@@ -6,7 +6,9 @@ import (
 )
 
 func main() {
+	//	net/httpパッケージを利用し、ルートのパスつまり/へのリクエストを待ち受ける
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		//	リクエストを受け取ると、ハードコードされたHTMLを返す
 		w.Write([]byte(`
 			<html>
 				<head>
@@ -19,7 +21,7 @@ func main() {
 		`))
 	})
 
-	//	Webサーバーを開始します
+	//	ListenAndServeメソッドを使い、ポート3000上でWebサーバーを開始する。
 	if err := http.ListenAndServe(":3000", nil); err != nil {
 		log.Fatal("ListenAndServe:", err)
 	}
