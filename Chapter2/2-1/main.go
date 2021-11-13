@@ -42,8 +42,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	CLIENT_ID := os.Getenv("CLIENT_ID")
-	CLIENT_SECRET := os.Getenv("CLIENT_SECRET")
+	GOOGLE_CLIENT_ID := os.Getenv("GOOGLE_CLIENT_ID")
+	GOOGLE_CLIENT_SECRET := os.Getenv("GOOGLE_CLIENT_SECRET")
 
 	var addr = flag.String("addr", ":8080", "アプリケーションのアドレス")
 	flag.Parse() //	フラグを解釈します
@@ -51,7 +51,7 @@ func main() {
 	//	Gomniauthのセットアップ
 	gomniauth.SetSecurityKey(randomString())
 	gomniauth.WithProviders(
-		google.New(CLIENT_ID, CLIENT_SECRET, "http://localhost:8080/auth/callback/google"),
+		google.New(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, "http://localhost:8080/auth/callback/google"),
 	)
 
 	r := newRoom()
