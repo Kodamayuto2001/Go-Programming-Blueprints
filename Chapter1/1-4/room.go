@@ -1,9 +1,10 @@
 package main
 
 import (
+	"1-4/trace"
 	"log"
 	"net/http"
-	"1-4/trace"
+
 	"github.com/gorilla/websocket"
 )
 
@@ -27,6 +28,7 @@ func newRoom() *room {
 		join:    make(chan *client),
 		leave:   make(chan *client),
 		clients: make(map[*client]bool),
+		tracer:  trace.Off(),
 	}
 }
 
