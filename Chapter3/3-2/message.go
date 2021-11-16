@@ -10,8 +10,8 @@ import (
 //	When:		メッセージが送信された時刻
 //	AvatarURL	アバターのURLを保持できるようにする
 type message struct {
-	Name    	string
-	Message 	string
-	When    	time.Time
-	AvatarURL 	string
+	Name      string
+	Message   string
+	When      time.Time
+	AvatarURL string
 }

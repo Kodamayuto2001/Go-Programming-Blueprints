@@ -78,10 +78,10 @@ func main() {
 		//	Value:	クッキーを削除しないブラウザもあるため、Valueの値（ユーザーについてのデータが格納されていた）を空文字列で上書きしている。
 		//	MaxAge:	クッキーのMaxAgeの値を-1と指定することで、ブラウザ上のクッキーは即座に削除される。
 		http.SetCookie(w, &http.Cookie{
-			Name:	"auth",
-			Value:	"",
-			Path:	"/",
-			MaxAge:	-1,
+			Name:   "auth",
+			Value:  "",
+			Path:   "/",
+			MaxAge: -1,
 		})
 		w.Header()["Location"] = []string{"/chat"}
 		w.WriteHeader(http.StatusTemporaryRedirect)
