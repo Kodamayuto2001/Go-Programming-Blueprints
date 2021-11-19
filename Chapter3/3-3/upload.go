@@ -12,11 +12,11 @@ func uploaderHandler(w http.ResponseWriter, req *http.Request) {
 	file, header, err := req.FormFile("avatarFile")
 	if err != nil {
 		io.WriteString(w, err.Error())
-		return 
+		return
 	}
-	
+
 	defer file.Close()
-	
+
 	data, err := ioutil.ReadAll(file)
 	if err != nil {
 		io.WriteString(w, err.Error())
