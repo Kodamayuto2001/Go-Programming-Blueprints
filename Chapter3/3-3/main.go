@@ -17,6 +17,8 @@ import (
 	"github.com/stretchr/objx"
 )
 
+var avatars Avatar = UseFileSystemAvatar
+
 type templateHandler struct {
 	once     sync.Once
 	filename string
@@ -64,10 +66,10 @@ func main() {
 		google.New(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, "http://localhost:8080/auth/callback/google"),
 	)
 
-	// r := newRoom()
+	r := newRoom()
 	// r := newRoom(UseAuthAvatar)
 	// r := newRoom(UseGravatar)
-	r := newRoom(UseFileSystemAvatar)
+	// r := newRoom(UseFileSystemAvatar)
 	// r.tracer = trace.New(os.Stdout)
 
 	// http.Handle("/", &templateHandler{filename: "chat.html"})
