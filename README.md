@@ -43,6 +43,8 @@ mysql> create table `sprinkle` (
 ### テーブル設計表示
 ```
 mysql> desc sprinkle;
+or
+mysql> describe sprinkle;
 ```
 
 ### テーブル設計変更（追加）
