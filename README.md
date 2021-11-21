@@ -12,3 +12,13 @@ sudo mysql -u root -p
 Enter password: *********************
 ```
 
+### データベース一覧表示
+```
+mysql> show databases;
+```
+
+### データベース作成
+```
+mysql> create database go_programming_blueprints;
+```
+
