@@ -56,3 +56,10 @@ mysql> alter table sprinkle add id int not null auto_increment primary key;
 ```
 mysql> alter table sprinkle modify id int first;
 ```
+
+### データ追加
+```
+mysql> insert into sprinkle values (1,'','');
+or
+mysql> insert into sprinkle (id, prefix, suffix) values (2, '', '');
+```
