@@ -26,3 +26,16 @@ mysql> create database go_programming_blueprints;
 ```
 mysql> use go_programming_blueprints;
 ```
+
+### テーブル一覧表示
+```
+mysql> show tables;
+```
+
+### テーブル作成
+```
+mysql> create table `sprinkle` (
+  `prefix` varchar(100) not null,
+  `suffix` varchar(100) not null
+) engine=InnoDB default charset=utf8;
+```
