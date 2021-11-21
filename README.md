@@ -39,3 +39,18 @@ mysql> create table `sprinkle` (
   `suffix` varchar(100) not null
 ) engine=InnoDB default charset=utf8;
 ```
+
+### テーブル設計表示
+```
+mysql> desc sprinkle;
+```
+
+### テーブル設計変更（追加）
+```
+mysql> alter table sprinkle add id int not null auto_increment primary key;
+```
+
+### テーブル設計変更（順番：最初）
+```
+mysql> alter table sprinkle modify id int first;
+```
