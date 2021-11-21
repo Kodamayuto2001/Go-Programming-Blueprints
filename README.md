@@ -22,3 +22,7 @@ mysql> show databases;
 mysql> create database go_programming_blueprints;
 ```
 
+### データベース選択
+```
+mysql> use go_programming_blueprints;
+```
