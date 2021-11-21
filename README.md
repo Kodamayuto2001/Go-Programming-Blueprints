@@ -64,4 +64,7 @@ or
 mysql> insert into sprinkle (id, prefix, suffix) values (2, '', '');
 ```
 
-![image](https://user-images.githubusercontent.com/55943803/142756819-94c5e65e-0f37-4653-81fe-86ccda7bac54.png)
+### 件数取得
+```
+mysql> select count(id) from sprinkle;
+```
