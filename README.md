@@ -1,6 +1,6 @@
 # Go-Programming-Blueprints
 
-### mysql起動
+### wsl:ubuntu-LTS mysql起動
 ```
 sudo service mysql start
 [sudo] password for yuto: ****
@@ -11,3 +11,4 @@ sudo service mysql start
 sudo mysql -u root -p
 Enter password: *********************
 ```
+
