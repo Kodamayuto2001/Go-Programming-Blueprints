@@ -15,20 +15,20 @@ import (
 	"github.com/joho/godotenv"
 )
 
-const otherWord = "*"
+// const otherWord = "*"
 
-var transforms = []string{
-	otherWord,
-	otherWord,
-	otherWord,
-	otherWord,
-	otherWord + "app",
-	otherWord + "site",
-	otherWord + "time",
-	"get" + otherWord,
-	"go" + otherWord,
-	"lets " + otherWord,
-}
+// var transforms = []string{
+// 	otherWord,
+// 	otherWord,
+// 	otherWord,
+// 	otherWord,
+// 	otherWord + "app",
+// 	otherWord + "site",
+// 	otherWord + "time",
+// 	"get" + otherWord,
+// 	"go" + otherWord,
+// 	"lets " + otherWord,
+// }
 
 type Sprinkle struct {
 	ID		int
@@ -108,6 +108,19 @@ func main() {
 		}
 	}
 
-	fmt.Printf("Number of rows are %d\n", count)
-	fmt.Println(s)
+	// fmt.Printf("Number of rows are %d\n", count)
+	// fmt.Println(s)
+
+	id := rand.Intn(count)
+
+	var sprinkle Sprinkle
+	err = db.QueryRow("select prefix, suffix from sprinkle where id = ?", id).Scan(&sprinkle.Prefix, &sprinkle.Suffix)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for s.Scan() {
+		fmt.Println("\n"+sprinkle.Prefix+s.Text()+sprinkle.Suffix+"\n")
+	}
 }
