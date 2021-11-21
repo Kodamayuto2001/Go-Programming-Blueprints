@@ -1,6 +1,6 @@
 # Go-Programming-Blueprints
 
-### wsl:ubuntu-LTS mysql起動
+### wsl:Ubuntu-20.04 mysql起動
 ```
 sudo service mysql start
 [sudo] password for yuto: ****
