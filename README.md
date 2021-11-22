@@ -13,6 +13,10 @@
 【upgrade】   バージョンアップ
 【revert】    変更取り消し
 ```
+### $GOPATH 確認方法
+```
+go env GOPATH
+```
 
 ### wsl:Ubuntu-20.04 mysql起動
 ```
