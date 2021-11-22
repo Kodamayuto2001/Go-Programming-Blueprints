@@ -37,7 +37,8 @@ type Sprinkle struct {
 }
 
 func main() {
-	err := godotenv.Load("../env/.env")
+	//	絶対パスで読み込むしかない
+	err := godotenv.Load(fmt.Sprintf("/mnt/d/workspace/go/Go-Programming-Blueprints/Chapter4-domain-search-command-line-tools/src/env/%s.env", os.Getenv("GO_ENV")))
 	if err != nil {
 		log.Fatal(err)
 	}
