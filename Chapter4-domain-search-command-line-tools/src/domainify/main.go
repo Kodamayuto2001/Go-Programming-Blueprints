@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"flag"
 )
 
 var tlds = []string{"com", "net"}
@@ -15,6 +16,15 @@ var tlds = []string{"com", "net"}
 const allowedChars = "abcdefghijklmnopqrstuvwxyz0123456789_-"
 
 func main() {
+	flag.Parse()
+
+	// fmt.Println(flag.Args())
+	// fmt.Printf("%T\n",flag.Args())
+	// fmt.Println(len(flag.Args()))
+	if len(flag.Args()) > 0 {
+		tlds = flag.Args()
+	}
+
 	rand.Seed(time.Now().UTC().UnixNano())
 	s := bufio.NewScanner(os.Stdin)
 
