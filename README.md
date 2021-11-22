@@ -1,5 +1,19 @@
 # Go-Programming-Blueprints
 
+### commit message rules
+```
+【fix】       バグ修正
+【hostfix】   クリティカルなバグ修正
+【add】       新規（ファイル）機能追加
+【update】    機能修正
+【change】    仕様変更
+【clean】     リファクタリング
+【disable】   無効化
+【remove】    削除
+【upgrade】   バージョンアップ
+【revert】    変更取り消し
+```
+
 ### wsl:Ubuntu-20.04 mysql起動
 ```
 sudo service mysql start
