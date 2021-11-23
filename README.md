@@ -23,6 +23,16 @@ go env GOPATH
 goimports -w *.go
 ```
 
+### build
+```
+go build -o hoge
+```
+
+### 実行
+```
+./hoge
+```
+
 ### wsl:Ubuntu-20.04 mysqlステータス確認
 ```
 sudo service mysql status
