@@ -18,6 +18,12 @@
 go env GOPATH
 ```
 
+### wsl:Ubuntu-20.04 mysqlステータス確認
+```
+sudo service mysql status
+[sudo] password for yuto: ****
+```
+
 ### wsl:Ubuntu-20.04 mysql起動
 ```
 sudo service mysql start
