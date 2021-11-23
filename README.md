@@ -18,6 +18,11 @@
 go env GOPATH
 ```
 
+### 自動 package import
+```
+goimports -w *.go
+```
+
 ### wsl:Ubuntu-20.04 mysqlステータス確認
 ```
 sudo service mysql status
