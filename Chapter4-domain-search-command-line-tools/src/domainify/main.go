@@ -40,6 +40,8 @@ func main() {
 			}
 			newText = append(newText, r)
 		}
-		fmt.Println(string(newText) + "." + tlds[rand.Intn(len(tlds))])
+		if string(newText) != "" {
+			fmt.Println(string(newText) + "." + tlds[rand.Intn(len(tlds))])
+		}
 	}
 }
