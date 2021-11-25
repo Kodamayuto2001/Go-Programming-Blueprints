@@ -13,6 +13,16 @@
 【upgrade】   バージョンアップ
 【revert】    変更取り消し
 ```
+### wsl2:Ubuntu-20.04 MongoDB 状態確認
+```
+sudo service mongodb status
+```
+
+### wsl2:Ubuntu-20.04 MongoDB 起動
+```
+sudo service mongodb start
+```
+
 ### $GOPATH 確認方法
 ```
 go env GOPATH
