@@ -13,9 +13,20 @@
 【upgrade】   バージョンアップ
 【revert】    変更取り消し
 ```
+
+### GOPATH設定方法
+```
+export GOPATH=任意の場所
+```
+
 ### nsq起動
 ```
 nsqlookup
+```
+
+### nsqd起動（ポートが4160の時）
+```
+nsqd --lookupd-tcp-address=localhost:4160
 ```
 
 ### wsl2:Ubuntu-20.04 MongoDB 状態確認
