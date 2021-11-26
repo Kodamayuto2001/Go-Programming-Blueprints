@@ -13,6 +13,11 @@
 【upgrade】   バージョンアップ
 【revert】    変更取り消し
 ```
+### nsq起動
+```
+nsqlookup
+```
+
 ### wsl2:Ubuntu-20.04 MongoDB 状態確認
 ```
 sudo service mongodb status
