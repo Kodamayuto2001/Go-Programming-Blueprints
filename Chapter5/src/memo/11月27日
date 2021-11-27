@@ -1,0 +1,48 @@
+「Go言語によるWebアプリケーション開発」5章
+【背景】
+    TwitterのストリーミングAPIである「User Streams API」が2021年8月17日に廃止したらしい（※１）
+    その代わり「Account Activity API」を新しく置き換えを発表した。（※２）（※３）
+
+【アプローチ】
+    本章では、以下の手順で書籍で実装している設計と同じような設計・実装・テストを行う。
+        １．「Account Activity API」は何なのかが理解できていないため、勉強する。
+        ２．何ができて何ができないのかや方向性がある程度理解できたと思ったら、書籍で実装しようとしていることは何なのかについて言語化し、ToDoリストで細かくやるべきことを管理する。
+        ３．未定
+
+    エディターに問題が発生したら、以下の自問を行い、自答をエディターに記録する。
+        ・「何がわかっていて、何が分かっていないのか」を可視化するために、メモする。
+        ・「どのような手段で解決しようとしている（解決した）のか」を自分の言葉で言語化し、記録する。
+        ・「タスクは自分にとって適切なハードルかどうか」についても考慮し、ハードルが高い場合は、細かくToDoを分割する。
+
+１．「Account Activity API」は何なのかが理解できていないため、勉強する。（※３）
+    【準備】
+        １．Twitterの開発者登録を通す
+        ２．アプリを作成する
+        ３．アプリのアクセス権限を Read, Write and Access direct messagesに変更する
+        ４．Consumer Key,Consumer Secret, Access Token, Access Token Secretをメモする
+        ５．httpsで通信できるサーバーを用意する(筆者はAWSでEC2 + ELB+ Nginxの構成にしました
+
+        １．Twitterの開発者登録を通す
+            「電話番号を登録する必要がある」というエラーが発生（※５）
+            （※４）を参考に解決しようと思う
+
+    【サンプルアプリクローン】
+    【環境構築】
+    【AccountActivityAPI】
+    【CRCテスト】
+    【Webhookを購読できるように登録する】
+    
+（※１）
+    https://mobilelaby.com/blog-entry-twitter-user-streams-api-available-until-aug-16-2018.html
+
+（※２）
+    https://mobilelaby.com/blog-entry-twitter-delay-schedule-user-streams-api.html
+
+（※３）
+    https://medium.com/eureka-engineering/twitter-aaapi-dm-bot-272d8bd73c38
+
+（※４）
+    https://twicat-help.beginners-magazine.tokyo/252/
+
+（※５）
+    https://developer.twitter.com/en/portal/petition/essential/terms
