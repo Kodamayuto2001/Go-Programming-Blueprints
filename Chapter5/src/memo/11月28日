@@ -1,0 +1,23 @@
+進捗
+    １．Twitterの開発者登録作成OK 
+    ２．アプリ名を設定（※１）
+    ３．アプリのアクセス権限を Read, Write and Access direct messagesに変更する（※２）
+    ４．Consumer Key,Consumer Secret, Access Token, Access Token Secretをメモする
+    ５．サーバーを立てる
+    
+メモ
+    １は電話番号を追加していなかったため、ずっと作成できていなかった。
+    電話番号を登録する方法配下の通り
+        Twitterにログイン
+        「もっと見る」ボタンをクリック
+        「設定とプライバシー」をクリック
+        「アカウント」をクリック
+        「アカウント情報」をクリック
+        「電話」をクリック
+        電話番号を追加
+
+（※１）
+    https://developer.twitter.com/en/portal/register/keys
+
+（※２） 
+    https://developer.twitter.com/en/portal/projects/1464951939264036864/apps/22616539/settings
