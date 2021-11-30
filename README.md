@@ -17,7 +17,9 @@
 ### ファイアウォールの設定
 ```
 sudo ufw allow 許可したいポート
+sudo ufw default deny
 ```
+
 
 
 ### GOPATH設定方法
