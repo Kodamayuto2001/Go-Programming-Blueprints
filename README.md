@@ -34,6 +34,7 @@ scp -P 22 hoge.txt hoge@192.168.1.1:/home/hoge
 ### zerossl nginx
 ```
 cat certificate.crt ca_bundle.crt >> test-certificate.crt
+sudo cp test-certificate.crt /etc/ssl/
 ```
 
 ### install nginx
