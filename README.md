@@ -36,6 +36,11 @@ scp -P 22 hoge.txt hoge@192.168.1.1:/home/hoge
 sudo apt install nginx
 ```
 
+### nginx reload
+```
+sudo /etc/init.d/nginx reload
+```
+
 ### グローバルIP調査方法
 ```
 curl httpbin.org/ip
