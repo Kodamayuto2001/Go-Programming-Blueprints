@@ -18,6 +18,7 @@
 ```
 sudo ufw allow 許可したいポート
 sudo ufw default deny
+sudo ufw status
 ```
 
 
