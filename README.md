@@ -14,6 +14,12 @@
 【revert】    変更取り消し
 ```
 
+### ファイアウォールの設定
+```
+sudo ufw allow 許可したいポート
+```
+
+
 ### GOPATH設定方法
 ```
 export GOPATH=任意の場所
