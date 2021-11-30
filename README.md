@@ -21,7 +21,20 @@ sudo ufw default deny
 sudo ufw status
 ```
 
+### ssh
+```
+ssh hoge@192.168.1.1 -p xx -i ~/.ssh/id_rsa
+```
 
+### install nginx
+```
+sudo apt install nginx
+```
+
+### グローバルIP調査方法
+```
+curl httpbin.org/ip
+```
 
 ### GOPATH設定方法
 ```
