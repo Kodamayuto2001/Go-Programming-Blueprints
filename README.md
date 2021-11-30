@@ -35,6 +35,7 @@ scp -P 22 hoge.txt hoge@192.168.1.1:/home/hoge
 ```
 cat certificate.crt ca_bundle.crt >> test-certificate.crt
 sudo cp test-certificate.crt /etc/ssl/
+sudo cp private.key /etc/ssl/
 ```
 
 ### install nginx
