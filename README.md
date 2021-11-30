@@ -26,6 +26,11 @@ sudo ufw status
 ssh hoge@192.168.1.1 -p xx -i ~/.ssh/id_rsa
 ```
 
+### scp
+```
+scp -P 22 hoge.txt hoge@192.168.1.1:/home/hoge 
+```
+
 ### install nginx
 ```
 sudo apt install nginx
