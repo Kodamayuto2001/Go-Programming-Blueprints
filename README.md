@@ -14,6 +14,45 @@
 【revert】    変更取り消し
 ```
 
+### ファイアウォールの設定
+```
+sudo ufw allow 許可したいポート
+sudo ufw default deny
+sudo ufw status
+```
+
+### ssh
+```
+ssh hoge@192.168.1.1 -p xx -i ~/.ssh/id_rsa
+```
+
+### scp
+```
+scp -P 22 hoge.txt hoge@192.168.1.1:/home/hoge 
+```
+
+### zerossl nginx
+```
+cat certificate.crt ca_bundle.crt >> test-certificate.crt
+sudo cp test-certificate.crt /etc/ssl/
+sudo cp private.key /etc/ssl/
+```
+
+### install nginx
+```
+sudo apt install nginx
+```
+
+### nginx reload
+```
+sudo /etc/init.d/nginx reload
+```
+
+### グローバルIP調査方法
+```
+curl httpbin.org/ip
+```
+
 ### GOPATH設定方法
 ```
 export GOPATH=任意の場所
