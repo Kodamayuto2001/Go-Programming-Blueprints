@@ -1,6 +1,19 @@
 package main
 
-/*	
+import (
+	"io"
+	"log"
+	"net"
+	"net/http"
+	"net/url"
+	"strconv"
+	"sync"
+	"time"
+
+	"github.com/joeshaw/envdecode"
+)
+
+/*
 	dial関数はまず、接続を表すconnが閉じられているかどうかを確認します。
 	そして新しい接続を開き、connの値を更新します。
 	接続が異常終了したり(TwitterのAPIでは時々このようなことが起こります)
@@ -15,16 +28,16 @@ var conn net.conn
 func dial(netw, addr string) (net.Conn, error) {
 	if conn != nil {
 		conn.Close()
-		conn = nil 
+		conn = nil
 	}
 
 	netc, err := net.DialTimeout(netw, addr, 5*time.Second)
 	if err != nil {
-		return nil, err 
+		return nil, err
 	}
 
 	conn = netc
-	return netc, nil 
+	return netc, nil
 }
 
 /*
@@ -33,7 +46,7 @@ func dial(netw, addr string) (net.Conn, error) {
 	しかし、プログラムの終了時（Ctrl + Cが押された場合）には、最後にcloseConnの処理だけが実行されます。
 */
 
-var reader io.ReadCloser 
+var reader io.ReadCloser
 
 func closeConn() {
 	if conn != nil {
@@ -64,16 +77,16 @@ func closeConn() {
 */
 
 var (
-	authClient *oauth.Client 
-	creds *oauth.Credentials
+	authClient *oauth.Client
+	creds      *oauth.Credentials
 )
 
 func setupTwitterAuth() {
 	var ts struct {
-		ConsumerKey 	string 	`env:"SP_TWITTER_KEY,required"`
-		ConsumerSecret	string 	`env:"SP_TWITTER_SECRET,required"`
-		AccessToken		string	`env:"SP_TWITTER_ACCESSTOKEN,required"`
-		AccessSecret	string	`env:"SP_TWITTER_ACCESSSECRET,required"`
+		ConsumerKey    string `env:"SP_TWITTER_KEY,required"`
+		ConsumerSecret string `env:"SP_TWITTER_SECRET,required"`
+		AccessToken    string `env:"SP_TWITTER_ACCESSTOKEN,required"`
+		AccessSecret   string `env:"SP_TWITTER_ACCESSSECRET,required"`
 	}
 
 	if err := envdecode.Decode(&ts); err != nil {
@@ -81,28 +94,28 @@ func setupTwitterAuth() {
 	}
 
 	creds = &oauth.Credentials{
-		Token:	ts.AccessToken,
-		Secret:	ts.AccessSecret,
+		Token:  ts.AccessToken,
+		Secret: ts.AccessSecret,
 	}
 
-	authClient = &oauth.Client {
+	authClient = &oauth.Client{
 		Credentials: oauth.Credentials{
-			Token:	ts.ConsumerKey,
-			Secret:	ts.ConsumerSecret,
-		}
+			Token:  ts.ConsumerKey,
+			Secret: ts.ConsumerSecret,
+		},
 	}
 }
 
 var (
-	authSetupOnce	sync.Once 
-	httpClient		*http.Client
+	authSetupOnce sync.Once
+	httpClient    *http.Client
 )
 
 func makeRequest(req *http.Request, params url.Values) (*http.Response, error) {
 	authSetupOnce.Do(func() {
 		setupTwitterAuth()
 		httpClient = &http.Client{
-			Transport: &http.Transport {
+			Transport: &http.Transport{
 				Dial: dial,
 			},
 		}
@@ -111,6 +124,6 @@ func makeRequest(req *http.Request, params url.Values) (*http.Response, error) {
 	formEnc := params.Encode()
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Content-Length", strconv.Itoa(len(formEnc)))
-	req.Header.Set("Authorization",authClient.AuthorizationHeader(creds, "POST", req.URL, params))
+	req.Header.Set("Authorization", authClient.AuthorizationHeader(creds, "POST", req.URL, params))
 	return httpClient.Do(req)
 }
