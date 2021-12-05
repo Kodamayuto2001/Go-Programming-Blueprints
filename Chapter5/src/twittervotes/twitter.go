@@ -1,12 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"io"
 	"log"
 	"net"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -126,4 +128,61 @@ func makeRequest(req *http.Request, params url.Values) (*http.Response, error) {
 	req.Header.Set("Content-Length", strconv.Itoa(len(formEnc)))
 	req.Header.Set("Authorization", authClient.AuthorizationHeader(creds, "POST", req.URL, params))
 	return httpClient.Do(req)
+}
+
+/*
+	ここでは、まずloadOptions関数を呼び出してすべての投票での選択しを取得しています。次にurl.Parseを使い、Twitter側のエンドポイントを指すurl.URLオブジェクトを生成しています。queryというurl.Valuesオブジェクトも生成し、選択肢のリストをカンマ区切りの文字列として指定しています。TwitterのAPIでは、url.ValuesオブジェクトがエンコードされたものをPOSTリクエストとして送信する必要があります。そのリクエストを表す*http.Requestをhttp.NewRequestで作成し、queryオブジェクトとともにmakeRequestに渡します。リクエストに成功すると、レスポンスの本体をもとにjson.Decoderを生成し、無限ループの中でDecodeメソッドを呼び出してデータを読み込みます。(主に接続が閉じられたなどの理由で)エラーが発生したら、ループから抜け出して呼び出し元に戻ります。読み込むツイートが存在する場合には、デコードされたツイートがtweet変数にセットされます。そしてこの中のTextプロパティに、140文字のツイート本文がセットされています。全ての選択しについて、ツイートの中で言及されている場合にはvotesチャネルにその選択肢を送信するという処理が行われます。つまり、1つのツイートの中で複数の選択しに対して投票するということが可能です。
+	投票の種類によっては、このルールを変更するべきかもしれません。
+
+		※votesチャネルには chan<- stringという型が指定されており、送信専用です。ここからデータを受け取ることはできません。<-はメッセージの流れる向きを表す矢印のようなものであり、逆向き（受信専用）に指定することもできます（<-chan string）。このような矢印も、コードの意図を表すうえで大きな役割を果たしています。readFromTwitter関数ではチャネルから投票のデータを受信することはなく、送信するだけだということを明示できます。
+
+	Decodeがエラーを返すたびにプログラムを終了するというのは、頑健なやり方とは言えません。TwitterのAPIドキュメントによると、接続は切断されることがあるため、サービスを利用するクライアントは切断の発生を考慮してコードを作成するべきとされています。また、われわれのプログラム自身も接続を閉じることがあります。接続が終了した場合には、再接続する必要があります。
+*/
+
+type tweet struct {
+	Text string
+}
+
+func readFromTwitter(votes chan<- string) {
+	options, err := loadOptions()
+	if err != nil {
+		log.Println("選択肢の読み込みに失敗しました：", err)
+		return
+	}
+
+	u, err := url.Parse("https://stream.twitter.com/1.1/statuses/filter.json")
+	if err != nil {
+		log.Println("URLの解析に失敗しました：", err)
+		return
+	}
+
+	query := make(url.Values)
+	query.Set("track", strings.Join(options, ","))
+
+	req, err := http.NewRequest("POST", u.String(), strings.NewReader(query.Encode()))
+	if err != nil {
+		log.Println("検索のリクエストの作成に失敗しました：", err)
+		return
+	}
+
+	resp, err := makeRequest(req, query)
+	if err != nil {
+		log.Println("検索のリクエストに失敗しました：", err)
+		return
+	}
+
+	reader = resp.Body
+	decoder := json.NewDecoder(reader)
+	for {
+		var tweet tweet
+		if err := decoder.Decode(&tweet); err != nil {
+			break
+		}
+		for _, option := range options {
+			if strings.Contains(strings.ToLower(tweet.Text), strings.ToLower(option)) {
+				log.Println("投票：", option)
+				votes <- option
+			}
+		}
+	}
 }
