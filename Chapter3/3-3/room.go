@@ -24,7 +24,7 @@ type room struct {
 	avatar Avatar
 }
 
-//	newRoomはすぐに利用できるチャットルームを生成して返します。
+// newRoomはすぐに利用できるチャットルームを生成して返します。
 func newRoom() *room {
 	return &room{
 		forward: make(chan *message),
@@ -78,21 +78,21 @@ var upgrader = &websocket.Upgrader{
 }
 
 func (r *room) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	socket, err := upgrader.Upgrade(w, req, nil)
-	if err != nil {
-		log.Fatal("ServeHTTP:", err)
+	session, ok := sessionFromContext(req)
+	if !ok {
+		http.Error(w, "authentication required", http.StatusUnauthorized)
 		return
 	}
-	authCookie, err := req.Cookie("auth")
+	socket, err := upgrader.Upgrade(w, req, nil)
 	if err != nil {
-		log.Fatal("クッキーの取得に失敗しました：", err)
+		log.Printf("websocket upgrade failed: %v", err)
 		return
 	}
 	client := &client{
 		socket:   socket,
 		send:     make(chan *message, messageBufferSize),
 		room:     r,
-		userData: objx.MustFromBase64(authCookie.Value),
+		userData: objx.New(sessionUserData(session)),
 	}
 	r.join <- client
 	defer func() { r.leave <- client }()

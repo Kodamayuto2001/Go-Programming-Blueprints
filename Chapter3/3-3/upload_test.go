@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/hex"
 	"image"
 	"image/color"
 	"image/png"
@@ -57,26 +58,39 @@ func withAvatarDirectory(t *testing.T) string {
 	return avatarUploadDirectory
 }
 
-func TestUploaderRejectsPathTraversalUserID(t *testing.T) {
-	dir := withAvatarDirectory(t)
+func serveUploader(t *testing.T, req *http.Request, userID string) *httptest.ResponseRecorder {
+	t.Helper()
+	t.Setenv("AUTH_COOKIE_SECRET", "test-only-secret-with-at-least-32-bytes")
+	value, err := signAuthSession(authSession{UserID: userID, Name: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.AddCookie(&http.Cookie{Name: "auth", Value: value})
 	rec := httptest.NewRecorder()
-	uploaderHandler(rec, avatarRequest(t, "../../outside", "avatar.png", pngAvatar(t)))
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	MustAuth(http.HandlerFunc(uploaderHandler)).ServeHTTP(rec, req)
+	return rec
+}
+
+func TestUploaderUsesAuthenticatedIdentityInsteadOfClientUserID(t *testing.T) {
+	dir := withAvatarDirectory(t)
+	// A forged multipart user ID is ignored; the signed session is authoritative.
+	rec := serveUploader(t, avatarRequest(t, "../../outside", "avatar.png", pngAvatar(t)), testAvatarUserID)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 0 {
-		t.Fatalf("unexpected files created: %d", len(entries))
+	if len(entries) != 1 || entries[0].Name() != testAvatarUserID+".png" {
+		t.Fatalf("unexpected files stored: %#v", entries)
 	}
 }
 
 func TestUploaderIgnoresClientFilenameAndStoresValidatedPNG(t *testing.T) {
 	dir := withAvatarDirectory(t)
 	rec := httptest.NewRecorder()
-	uploaderHandler(rec, avatarRequest(t, testAvatarUserID, "../../outside.html", pngAvatar(t)))
+	rec = serveUploader(t, avatarRequest(t, testAvatarUserID, "../../outside.html", pngAvatar(t)), testAvatarUserID)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body.String())
 	}
@@ -95,7 +109,7 @@ func TestUploaderIgnoresClientFilenameAndStoresValidatedPNG(t *testing.T) {
 func TestUploaderRejectsNonImageContent(t *testing.T) {
 	dir := withAvatarDirectory(t)
 	rec := httptest.NewRecorder()
-	uploaderHandler(rec, avatarRequest(t, testAvatarUserID, "avatar.png", []byte("not an image")))
+	rec = serveUploader(t, avatarRequest(t, testAvatarUserID, "avatar.png", []byte("not an image")), testAvatarUserID)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
@@ -108,13 +122,21 @@ func TestUploaderRejectsNonImageContent(t *testing.T) {
 	}
 }
 
-func TestUploaderRouteRequiresAuthCookie(t *testing.T) {
+func TestUploaderRouteRequiresValidSignedSession(t *testing.T) {
 	dir := withAvatarDirectory(t)
 	rec := httptest.NewRecorder()
 	handler := MustAuth(http.HandlerFunc(uploaderHandler))
 	handler.ServeHTTP(rec, avatarRequest(t, testAvatarUserID, "avatar.png", pngAvatar(t)))
 	if rec.Code != http.StatusTemporaryRedirect {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusTemporaryRedirect)
+	}
+	t.Setenv("AUTH_COOKIE_SECRET", "test-only-secret-with-at-least-32-bytes")
+	forged := avatarRequest(t, testAvatarUserID, "avatar.png", pngAvatar(t))
+	forged.AddCookie(&http.Cookie{Name: "auth", Value: hex.EncodeToString([]byte("forged user data"))})
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, forged)
+	if rec.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("forged cookie status = %d, want %d", rec.Code, http.StatusTemporaryRedirect)
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
