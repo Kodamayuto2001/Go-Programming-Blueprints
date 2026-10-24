@@ -35,7 +35,7 @@ func authCookieKey() ([]byte, error) {
 
 func validSessionUserID(userID string) bool {
 	decoded, err := hex.DecodeString(userID)
-	return err == nil && len(decoded) == 16
+	return err == nil && len(decoded) == sha256.Size
 }
 
 func signAuthSession(session authSession) (string, error) {

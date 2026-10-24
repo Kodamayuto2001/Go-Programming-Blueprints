@@ -2,9 +2,8 @@ package main
 
 import (
 	"context"
-	"crypto/md5"
-	"fmt"
-	"io"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"strings"
 
@@ -100,9 +99,8 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		chatUser := &chatUser{User: user}
-		m := md5.New()
-		io.WriteString(m, strings.ToLower(user.Email()))
-		chatUser.uniqueID = fmt.Sprintf("%x", m.Sum(nil))
+		userID := sha256.Sum256([]byte(strings.ToLower(user.Email())))
+		chatUser.uniqueID = hex.EncodeToString(userID[:])
 		avatarURL, err := avatars.GetAvatarURL(chatUser)
 		if err != nil {
 			http.Error(w, "user avatar unavailable", http.StatusBadGateway)

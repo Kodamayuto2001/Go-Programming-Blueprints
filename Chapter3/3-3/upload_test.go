@@ -15,7 +15,7 @@ import (
 	"testing"
 )
 
-const testAvatarUserID = "0123456789abcdef0123456789abcdef"
+const testAvatarUserID = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 func pngAvatar(t *testing.T) []byte {
 	t.Helper()

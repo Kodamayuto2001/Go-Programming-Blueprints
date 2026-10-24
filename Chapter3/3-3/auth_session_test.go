@@ -8,10 +8,11 @@ import (
 )
 
 const testAuthCookieSecret = "test-only-secret-with-at-least-32-bytes"
+const testAuthUserID = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 func TestAuthSessionRequiresStrongSecretAndValidUserID(t *testing.T) {
 	t.Setenv("AUTH_COOKIE_SECRET", "short")
-	if _, err := signAuthSession(authSession{UserID: "0123456789abcdef0123456789abcdef"}); err == nil {
+	if _, err := signAuthSession(authSession{UserID: testAuthUserID}); err == nil {
 		t.Fatal("expected short secret to be rejected")
 	}
 	t.Setenv("AUTH_COOKIE_SECRET", testAuthCookieSecret)
@@ -22,7 +23,7 @@ func TestAuthSessionRequiresStrongSecretAndValidUserID(t *testing.T) {
 
 func TestAuthSessionSignatureRejectsTampering(t *testing.T) {
 	t.Setenv("AUTH_COOKIE_SECRET", testAuthCookieSecret)
-	value, err := signAuthSession(authSession{UserID: "0123456789abcdef0123456789abcdef", Name: "test"})
+	value, err := signAuthSession(authSession{UserID: testAuthUserID, Name: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +39,7 @@ func TestAuthSessionSignatureRejectsTampering(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if session.UserID != "0123456789abcdef0123456789abcdef" || session.Name != "test" {
+	if session.UserID != testAuthUserID || session.Name != "test" {
 		t.Fatal("signed session did not round-trip")
 	}
 	if _, err := readAuthSession(strings.Repeat("A", 4097)); err == nil {
@@ -50,7 +51,7 @@ func TestAuthCookieHasSecureDefaults(t *testing.T) {
 	t.Setenv("AUTH_COOKIE_SECRET", testAuthCookieSecret)
 	t.Setenv("APP_ENV", "production")
 	response := httptest.NewRecorder()
-	if err := setAuthCookie(response, authSession{UserID: "0123456789abcdef0123456789abcdef"}); err != nil {
+	if err := setAuthCookie(response, authSession{UserID: testAuthUserID}); err != nil {
 		t.Fatal(err)
 	}
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -60,7 +61,7 @@ func TestAuthCookieHasSecureDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if session.UserID != "0123456789abcdef0123456789abcdef" {
+	if session.UserID != testAuthUserID {
 		t.Fatal("request did not decode the signed session")
 	}
 	if !cookie.HttpOnly || !cookie.Secure || cookie.SameSite != http.SameSiteLaxMode || cookie.MaxAge <= 0 {
