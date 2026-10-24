@@ -37,22 +37,27 @@ func (t *templateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
 		"Host": r.Host,
 	}
-	if authCookie, err := r.Cookie("auth"); err == nil {
-		data["UserData"] = objx.MustFromBase64(authCookie.Value)
+	if session, err := readAuthSessionFromRequest(r); err == nil {
+		data["UserData"] = objx.New(sessionUserData(session))
 	}
 	t.templ.Execute(w, data)
 }
 
-func randomString() string {
+func randomString() (string, error) {
 	capacity := 40
 	slice := make([]byte, capacity)
-	rand.Read(slice)
-	return base64.URLEncoding.EncodeToString(slice)
+	if _, err := rand.Read(slice); err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(slice), nil
 }
 
 func main() {
 	err := godotenv.Load()
 	if err != nil {
+		log.Fatal(err)
+	}
+	if err := authCookieConfigError(); err != nil {
 		log.Fatal(err)
 	}
 
@@ -65,7 +70,11 @@ func main() {
 	flag.Parse() //	フラグを解釈します
 
 	//	Gomniauthのセットアップ
-	gomniauth.SetSecurityKey(randomString())
+	securityKey, err := randomString()
+	if err != nil {
+		log.Fatal("authentication security initialization failed")
+	}
+	gomniauth.SetSecurityKey(securityKey)
 	gomniauth.WithProviders(
 		google.New(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, "http://localhost:8080/auth/callback/google"),
 	)
@@ -80,21 +89,24 @@ func main() {
 	http.Handle("/chat", MustAuth(&templateHandler{filename: "chat.html"}))
 	http.Handle("/login", &templateHandler{filename: "login.html"})
 	http.HandleFunc("/auth/", loginHandler)
-	http.Handle("/room", r)
+	http.Handle("/room", MustAuth(r))
 	http.HandleFunc("/logout", func(w http.ResponseWriter, r *http.Request) {
 		//	Value:	クッキーを削除しないブラウザもあるため、Valueの値（ユーザーについてのデータが格納されていた）を空文字列で上書きしている。
 		//	MaxAge:	クッキーのMaxAgeの値を-1と指定することで、ブラウザ上のクッキーは即座に削除される。
 		http.SetCookie(w, &http.Cookie{
-			Name:   "auth",
-			Value:  "",
-			Path:   "/",
-			MaxAge: -1,
+			Name:     "auth",
+			Value:    "",
+			Path:     "/",
+			MaxAge:   -1,
+			HttpOnly: true,
+			Secure:   os.Getenv("APP_ENV") != "development",
+			SameSite: http.SameSiteLaxMode,
 		})
 		w.Header()["Location"] = []string{"/chat"}
 		w.WriteHeader(http.StatusTemporaryRedirect)
 	})
 	http.Handle("/upload", MustAuth(&templateHandler{filename: "upload.html"}))
-	http.HandleFunc("/uploader", uploaderHandler)
+	http.Handle("/uploader", MustAuth(http.HandlerFunc(uploaderHandler)))
 	http.Handle("/avatars/",
 		http.StripPrefix("/avatars/",
 			http.FileServer(http.Dir("./avatars"))))

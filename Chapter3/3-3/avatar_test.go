@@ -74,10 +74,16 @@ func TestGravatarAvatar(t *testing.T) {
 func TestFileSystemAvatar(t *testing.T) {
 	//	テスト用のアバターのファイルを生成します
 	filename := filepath.Join("avatars", "abc.jpg")
+	if err := os.MkdirAll(filepath.Dir(filename), 0700); err != nil {
+		t.Fatal(err)
+	}
 	ioutil.WriteFile(filename, []byte{}, 0777)
 
 	//	【参照】https://stackoverflow.com/questions/16008604/why-add-after-closure-body-in-golang
-	defer func() { os.Remove(filename) }()
+	defer func() {
+		os.Remove(filename)
+		os.Remove(filepath.Dir(filename))
+	}()
 
 	var fileSystemAvatar FileSystemAvatar
 	// client := new(client)

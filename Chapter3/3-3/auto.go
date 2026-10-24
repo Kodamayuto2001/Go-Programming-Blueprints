@@ -1,12 +1,17 @@
 package main
 
 import (
-	"crypto/md5"
-	"fmt"
-	"io"
-	"log"
+	"context"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"errors"
 	"net/http"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/stretchr/gomniauth"
 	"github.com/stretchr/objx"
@@ -19,10 +24,10 @@ type ChatUser interface {
 	AvatarURL() string
 }
 
-//	型の埋め込み(type embedding)
-//	gomniauth/common.User型
-//	chatUserは自動的にGomniauthのUserインターフェースを実装
-//	AvatarURLはGomniauthのUserインターフェースでもAvatarURLメソッドが定義されている
+// 型の埋め込み(type embedding)
+// gomniauth/common.User型
+// chatUserは自動的にGomniauthのUserインターフェースを実装
+// AvatarURLはGomniauthのUserインターフェースでもAvatarURLメソッドが定義されている
 type chatUser struct {
 	gomniauthcommon.User
 	uniqueID string
@@ -37,93 +42,158 @@ type authHandler struct {
 }
 
 func (h *authHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	//	cookieが空の場合もある
-	if cookie, err := r.Cookie("auth"); err == http.ErrNoCookie || cookie.Value == "" {
-		//	未認証
+	cookie, err := r.Cookie("auth")
+	if err != nil {
 		w.Header().Set("Location", "/login")
 		w.WriteHeader(http.StatusTemporaryRedirect)
-	} else if err != nil {
-		//	何らかの別のエラーが発生
-		panic(err.Error())
-	} else {
-		//	成功。ラップされたハンドラを呼び出します
-		h.next.ServeHTTP(w, r)
+		return
 	}
+	session, err := readAuthSession(cookie.Value)
+	if err != nil {
+		w.Header().Set("Location", "/login")
+		w.WriteHeader(http.StatusTemporaryRedirect)
+		return
+	}
+	ctx := context.WithValue(r.Context(), authSessionContextKey{}, session)
+	h.next.ServeHTTP(w, r.WithContext(ctx))
 }
 
 func MustAuth(handler http.Handler) http.Handler {
 	return &authHandler{next: handler}
 }
 
-//	loginHandlerはサードパーティーへのログインの処理を受け持ちます。
-//	パスの形式： /auth/{action}/{provider}
+const (
+	oauthStateCookieName = "oauth_state"
+	oauthStateLifetime   = 10 * time.Minute
+)
+
+func newOAuthState() (*gomniauthcommon.State, string, error) {
+	nonce := make([]byte, 32)
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, "", err
+	}
+	nonceValue := base64.RawURLEncoding.EncodeToString(nonce)
+	return gomniauthcommon.NewState("nonce", nonceValue), nonceValue, nil
+}
+
+func verifyOAuthState(r *http.Request, query objx.Map) error {
+	cookie, err := r.Cookie(oauthStateCookieName)
+	if err != nil {
+		return errors.New("missing OAuth state cookie")
+	}
+	signedState := query.Get("state").Str()
+	if signedState == "" {
+		return errors.New("missing OAuth state")
+	}
+	state, err := objx.FromSignedBase64(signedState, gomniauthcommon.GetSecurityKey())
+	if err != nil {
+		return errors.New("invalid OAuth state")
+	}
+	stateNonce := state.Get("nonce").Str()
+	if stateNonce == "" || !hmac.Equal([]byte(cookie.Value), []byte(stateNonce)) {
+		return errors.New("OAuth state does not match this browser")
+	}
+	return nil
+}
+
+func setOAuthStateCookie(w http.ResponseWriter, providerName, nonce string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     oauthStateCookieName,
+		Value:    nonce,
+		Path:     "/auth/callback/" + providerName,
+		Expires:  time.Now().Add(oauthStateLifetime),
+		MaxAge:   int(oauthStateLifetime.Seconds()),
+		HttpOnly: true,
+		Secure:   os.Getenv("APP_ENV") != "development",
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func clearOAuthStateCookie(w http.ResponseWriter, providerName string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     oauthStateCookieName,
+		Value:    "",
+		Path:     "/auth/callback/" + providerName,
+		Expires:  time.Unix(1, 0),
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   os.Getenv("APP_ENV") != "development",
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+// loginHandlerはサードパーティーへのログインの処理を受け持ちます。
+// パスの形式： /auth/{action}/{provider}
 func loginHandler(w http.ResponseWriter, r *http.Request) {
 	segs := strings.Split(r.URL.Path, "/")
+	if len(segs) != 4 || segs[1] != "auth" || segs[2] == "" || segs[3] == "" {
+		http.NotFound(w, r)
+		return
+	}
 	action := segs[2]
-	provider := segs[3]
+	providerName := segs[3]
+	provider, err := gomniauth.Provider(providerName)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
 	switch action {
 	case "login":
-		provider, err := gomniauth.Provider(provider)
+		state, nonce, err := newOAuthState()
 		if err != nil {
-			log.Fatalln("認証プロバイダーの取得に失敗しました：", provider, "-", err)
+			http.Error(w, "authentication is unavailable", http.StatusServiceUnavailable)
+			return
 		}
-		loginUrl, err := provider.GetBeginAuthURL(nil, nil)
+		loginUrl, err := provider.GetBeginAuthURL(state, nil)
 		if err != nil {
-			log.Fatalln("GetBeginAuthURLの呼び出し中にエラーが発生しました：", provider, "-", err)
+			http.Error(w, "authentication provider unavailable", http.StatusServiceUnavailable)
+			return
 		}
+		setOAuthStateCookie(w, providerName, nonce)
 		w.Header().Set("Location", loginUrl)
 		w.WriteHeader(http.StatusTemporaryRedirect)
 	case "callback":
-		provider, err := gomniauth.Provider(provider)
+		defer clearOAuthStateCookie(w, providerName)
+		query, err := objx.FromURLQuery(r.URL.RawQuery)
 		if err != nil {
-			log.Fatalln("認証プロバイダーの取得に失敗しました。", provider, "-", err)
+			http.Error(w, "invalid authentication response", http.StatusBadRequest)
+			return
 		}
-
-		creds, err := provider.CompleteAuth(objx.MustFromURLQuery(r.URL.RawQuery))
+		if err := verifyOAuthState(r, query); err != nil {
+			http.Error(w, "invalid authentication response", http.StatusBadRequest)
+			return
+		}
+		creds, err := provider.CompleteAuth(query)
 		if err != nil {
-			log.Fatalln("認証を完了できませんでした", provider, "-", err)
+			http.Error(w, "authentication could not be completed", http.StatusUnauthorized)
+			return
 		}
 
 		user, err := provider.GetUser(creds)
 		if err != nil {
-			log.Fatalln("ユーザーの取得に失敗しました", provider, "-", err)
+			http.Error(w, "user profile unavailable", http.StatusBadGateway)
+			return
 		}
-
-		// m := md5.New()
-		// io.WriteString(m, strings.ToLower(user.Email()))
-		// userID := fmt.Sprintf("%x", m.Sum(nil))
 
 		chatUser := &chatUser{User: user}
-		m := md5.New()
-		io.WriteString(m, strings.ToLower(user.Email()))
-		chatUser.uniqueID = fmt.Sprintf("%x", m.Sum(nil))
+		userID := sha256.Sum256([]byte(strings.ToLower(user.Email())))
+		chatUser.uniqueID = hex.EncodeToString(userID[:])
 		avatarURL, err := avatars.GetAvatarURL(chatUser)
 		if err != nil {
-			log.Fatalln("GetAvatarURLに失敗しました", "-", err)
+			http.Error(w, "user avatar unavailable", http.StatusBadGateway)
+			return
 		}
-		//	データを保存します
-		// authCookieValue := objx.New(map[string]interface{}{
-		// 	"userid":     userID,
-		// 	"name":       user.Name(),
-		// 	"avatar_url": user.AvatarURL(),
-		// 	"email":      user.Email(),
-		// }).MustBase64()
-
-		authCookieValue := objx.New(map[string]interface{}{
-			"userid":     chatUser.uniqueID,
-			"name":       user.Name(),
-			"avatar_url": avatarURL,
-		}).MustBase64()
-
-		http.SetCookie(w, &http.Cookie{
-			Name:  "auth",
-			Value: authCookieValue,
-			Path:  "/",
-		})
+		if err := setAuthCookie(w, authSession{
+			UserID:    chatUser.uniqueID,
+			Name:      user.Name(),
+			AvatarURL: avatarURL,
+		}); err != nil {
+			http.Error(w, "authentication is not configured", http.StatusServiceUnavailable)
+			return
+		}
 		w.Header()["Location"] = []string{"/chat"}
 		w.WriteHeader(http.StatusTemporaryRedirect)
 	default:
-		w.WriteHeader(http.StatusNotFound)
-		fmt.Fprintf(w, "アクション%sには非対応です", action)
+		http.NotFound(w, r)
 	}
 }
