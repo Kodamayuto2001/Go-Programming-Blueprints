@@ -5,9 +5,11 @@ import (
 	"encoding/base64"
 	"flag"
 	"log"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"text/template"
 
@@ -37,8 +39,8 @@ func (t *templateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
 		"Host": r.Host,
 	}
-	if authCookie, err := r.Cookie("auth"); err == nil {
-		data["UserData"] = objx.MustFromBase64(authCookie.Value)
+	if payload, ok := authPayloadFromRequest(r); ok {
+		data["UserData"] = objx.MustFromBase64(payload)
 	}
 	t.templ.Execute(w, data)
 }
@@ -46,7 +48,9 @@ func (t *templateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func randomString() string {
 	capacity := 40
 	slice := make([]byte, capacity)
-	rand.Read(slice)
+	if _, err := rand.Read(slice); err != nil {
+		log.Fatal("安全な乱数を取得できませんでした：", err)
+	}
 	return base64.URLEncoding.EncodeToString(slice)
 }
 
@@ -54,6 +58,10 @@ func main() {
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatal(err)
+	}
+	authCookieSigningKey, err = newAuthCookieSigningKey()
+	if err != nil {
+		log.Fatal("認証Cookie用の鍵を生成できませんでした：", err)
 	}
 
 	GOOGLE_CLIENT_ID := os.Getenv("GOOGLE_CLIENT_ID")
@@ -80,24 +88,25 @@ func main() {
 	http.Handle("/chat", MustAuth(&templateHandler{filename: "chat.html"}))
 	http.Handle("/login", &templateHandler{filename: "login.html"})
 	http.HandleFunc("/auth/", loginHandler)
-	http.Handle("/room", r)
+	http.Handle("/room", MustAuth(r))
 	http.HandleFunc("/logout", func(w http.ResponseWriter, r *http.Request) {
 		//	Value:	クッキーを削除しないブラウザもあるため、Valueの値（ユーザーについてのデータが格納されていた）を空文字列で上書きしている。
 		//	MaxAge:	クッキーのMaxAgeの値を-1と指定することで、ブラウザ上のクッキーは即座に削除される。
 		http.SetCookie(w, &http.Cookie{
-			Name:   "auth",
-			Value:  "",
-			Path:   "/",
-			MaxAge: -1,
+			Name:     "auth",
+			Value:    "",
+			Path:     "/",
+			MaxAge:   -1,
+			HttpOnly: true,
+			Secure:   true,
+			SameSite: http.SameSiteLaxMode,
 		})
 		w.Header()["Location"] = []string{"/chat"}
 		w.WriteHeader(http.StatusTemporaryRedirect)
 	})
 	http.Handle("/upload", MustAuth(&templateHandler{filename: "upload.html"}))
 	http.Handle("/uploader", MustAuth(uploaderHandler("./avatars")))
-	http.Handle("/avatars/",
-		http.StripPrefix("/avatars/",
-			http.FileServer(http.Dir("./avatars"))))
+	http.Handle("/avatars/", avatarFilesHandler("./avatars"))
 
 	//	チャットルームを開始します。
 	go r.run()
@@ -107,4 +116,21 @@ func main() {
 	if err := http.ListenAndServe(*addr, nil); err != nil {
 		log.Fatal("ListenAndServe:", err)
 	}
+}
+
+func avatarFilesHandler(avatarDir string) http.Handler {
+	avatarFiles := http.StripPrefix("/avatars/", http.FileServer(http.Dir(avatarDir)))
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		if contentType := mime.TypeByExtension(filepath.Ext(req.URL.Path)); contentType != "" {
+			w.Header().Set("Content-Type", contentType)
+		} else {
+			w.Header().Set("Content-Type", "application/octet-stream")
+		}
+		if strings.HasSuffix(req.URL.Path, "/") || filepath.Base(req.URL.Path) == "." {
+			http.NotFound(w, req)
+			return
+		}
+		avatarFiles.ServeHTTP(w, req)
+	})
 }

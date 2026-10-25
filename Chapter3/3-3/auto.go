@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/stretchr/gomniauth"
 	"github.com/stretchr/objx"
@@ -19,10 +20,10 @@ type ChatUser interface {
 	AvatarURL() string
 }
 
-//	型の埋め込み(type embedding)
-//	gomniauth/common.User型
-//	chatUserは自動的にGomniauthのUserインターフェースを実装
-//	AvatarURLはGomniauthのUserインターフェースでもAvatarURLメソッドが定義されている
+// 型の埋め込み(type embedding)
+// gomniauth/common.User型
+// chatUserは自動的にGomniauthのUserインターフェースを実装
+// AvatarURLはGomniauthのUserインターフェースでもAvatarURLメソッドが定義されている
 type chatUser struct {
 	gomniauthcommon.User
 	uniqueID string
@@ -32,31 +33,8 @@ func (u chatUser) UniqueID() string {
 	return u.uniqueID
 }
 
-type authHandler struct {
-	next http.Handler
-}
-
-func (h *authHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	//	cookieが空の場合もある
-	if cookie, err := r.Cookie("auth"); err == http.ErrNoCookie || cookie.Value == "" {
-		//	未認証
-		w.Header().Set("Location", "/login")
-		w.WriteHeader(http.StatusTemporaryRedirect)
-	} else if err != nil {
-		//	何らかの別のエラーが発生
-		panic(err.Error())
-	} else {
-		//	成功。ラップされたハンドラを呼び出します
-		h.next.ServeHTTP(w, r)
-	}
-}
-
-func MustAuth(handler http.Handler) http.Handler {
-	return &authHandler{next: handler}
-}
-
-//	loginHandlerはサードパーティーへのログインの処理を受け持ちます。
-//	パスの形式： /auth/{action}/{provider}
+// loginHandlerはサードパーティーへのログインの処理を受け持ちます。
+// パスの形式： /auth/{action}/{provider}
 func loginHandler(w http.ResponseWriter, r *http.Request) {
 	segs := strings.Split(r.URL.Path, "/")
 	action := segs[2]
@@ -109,16 +87,21 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		// 	"email":      user.Email(),
 		// }).MustBase64()
 
-		authCookieValue := objx.New(map[string]interface{}{
+		authCookiePayload := objx.New(map[string]interface{}{
 			"userid":     chatUser.uniqueID,
 			"name":       user.Name(),
 			"avatar_url": avatarURL,
 		}).MustBase64()
+		authCookieValue := signAuthCookie(authCookiePayload, authCookieSigningKey, time.Now())
 
 		http.SetCookie(w, &http.Cookie{
-			Name:  "auth",
-			Value: authCookieValue,
-			Path:  "/",
+			Name:     "auth",
+			Value:    authCookieValue,
+			Path:     "/",
+			MaxAge:   int(authCookieMaxAge.Seconds()),
+			HttpOnly: true,
+			Secure:   true,
+			SameSite: http.SameSiteLaxMode,
 		})
 		w.Header()["Location"] = []string{"/chat"}
 		w.WriteHeader(http.StatusTemporaryRedirect)
