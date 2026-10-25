@@ -94,7 +94,7 @@ func main() {
 		w.WriteHeader(http.StatusTemporaryRedirect)
 	})
 	http.Handle("/upload", MustAuth(&templateHandler{filename: "upload.html"}))
-	http.HandleFunc("/uploader", uploaderHandler)
+	http.Handle("/uploader", MustAuth(uploaderHandler("./avatars")))
 	http.Handle("/avatars/",
 		http.StripPrefix("/avatars/",
 			http.FileServer(http.Dir("./avatars"))))

@@ -10,31 +10,41 @@ import (
 	"strings"
 )
 
-func uploaderHandler(w http.ResponseWriter, req *http.Request) {
-	file, header, err := req.FormFile("avatarFile")
-	if err != nil {
-		http.Error(w, "invalid upload", http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
+const maxUploadBytes int64 = 10 << 20
 
-	destination, err := createUploadFile("./uploads", header.Filename)
-	if err != nil {
-		http.Error(w, "unsupported upload", http.StatusBadRequest)
-		return
-	}
-	if _, err := io.Copy(destination, file); err != nil {
-		_ = destination.Close()
-		_ = os.Remove(destination.Name())
-		http.Error(w, "upload failed", http.StatusInternalServerError)
-		return
-	}
-	if err := destination.Close(); err != nil {
-		_ = os.Remove(destination.Name())
-		http.Error(w, "upload failed", http.StatusInternalServerError)
-		return
-	}
-	io.WriteString(w, "Upload successful")
+func uploaderHandler(uploadDir string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		req.Body = http.MaxBytesReader(w, req.Body, maxUploadBytes)
+		file, header, err := req.FormFile("avatarFile")
+		if err != nil {
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				http.Error(w, "upload too large", http.StatusRequestEntityTooLarge)
+				return
+			}
+			http.Error(w, "invalid upload", http.StatusBadRequest)
+			return
+		}
+		defer file.Close()
+
+		destination, err := createUploadFile(uploadDir, header.Filename)
+		if err != nil {
+			http.Error(w, "unsupported upload", http.StatusBadRequest)
+			return
+		}
+		if _, err := io.Copy(destination, file); err != nil {
+			_ = destination.Close()
+			_ = os.Remove(destination.Name())
+			http.Error(w, "upload failed", http.StatusInternalServerError)
+			return
+		}
+		if err := destination.Close(); err != nil {
+			_ = os.Remove(destination.Name())
+			http.Error(w, "upload failed", http.StatusInternalServerError)
+			return
+		}
+		io.WriteString(w, "Upload successful")
+	})
 }
 
 func createUploadFile(uploadDir, originalFilename string) (*os.File, error) {
