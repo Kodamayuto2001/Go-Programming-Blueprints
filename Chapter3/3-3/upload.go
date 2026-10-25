@@ -1,33 +1,51 @@
 package main
 
 import (
+	"errors"
 	"io"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"path/filepath"
+	"strings"
 )
 
 func uploaderHandler(w http.ResponseWriter, req *http.Request) {
-	userId := req.FormValue("userid")
 	file, header, err := req.FormFile("avatarFile")
 	if err != nil {
-		io.WriteString(w, err.Error())
+		http.Error(w, "invalid upload", http.StatusBadRequest)
 		return
 	}
-
 	defer file.Close()
 
-	data, err := ioutil.ReadAll(file)
+	destination, err := createUploadFile("./uploads", header.Filename)
 	if err != nil {
-		io.WriteString(w, err.Error())
+		http.Error(w, "unsupported upload", http.StatusBadRequest)
 		return
 	}
+	if _, err := io.Copy(destination, file); err != nil {
+		_ = destination.Close()
+		_ = os.Remove(destination.Name())
+		http.Error(w, "upload failed", http.StatusInternalServerError)
+		return
+	}
+	if err := destination.Close(); err != nil {
+		_ = os.Remove(destination.Name())
+		http.Error(w, "upload failed", http.StatusInternalServerError)
+		return
+	}
+	io.WriteString(w, "Upload successful")
+}
 
-	filename := filepath.Join("avatars", userId+filepath.Ext(header.Filename))
-	err = ioutil.WriteFile(filename, data, 0777)
-	if err != nil {
-		io.WriteString(w, err.Error())
-		return
+func createUploadFile(uploadDir, originalFilename string) (*os.File, error) {
+	ext := strings.ToLower(filepath.Ext(originalFilename))
+	switch ext {
+	case ".jpg", ".jpeg", ".png", ".gif":
+	default:
+		return nil, errors.New("unsupported upload extension")
 	}
-	io.WriteString(w, "成功")
+	if err := os.MkdirAll(uploadDir, 0700); err != nil {
+		return nil, err
+	}
+	return ioutil.TempFile(uploadDir, "avatar-*"+ext)
 }
