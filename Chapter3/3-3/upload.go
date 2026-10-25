@@ -133,6 +133,9 @@ func storeAvatar(uploadDir, userID, originalFilename string, content []byte) err
 	if err := os.MkdirAll(uploadDir, 0700); err != nil {
 		return err
 	}
+	if err := os.Chmod(uploadDir, 0700); err != nil {
+		return err
+	}
 
 	avatarPublishMu.Lock()
 	defer avatarPublishMu.Unlock()

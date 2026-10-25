@@ -6,7 +6,14 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-//	clientはチャットを行っている一人
+const (
+	writeWait  = 10 * time.Second
+	pongWait   = 60 * time.Second
+	pingPeriod = (pongWait * 9) / 10
+	maxMessage = 64 << 10
+)
+
+// clientはチャットを行っている一人
 type client struct {
 	//	socketはこのクライアントのためのWebSocketです。
 	socket *websocket.Conn
@@ -19,8 +26,17 @@ type client struct {
 }
 
 func (c *client) read() {
+	c.socket.SetReadLimit(maxMessage)
+	if err := c.socket.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
+		return
+	}
+	c.socket.SetPongHandler(func(string) error {
+		return c.socket.SetReadDeadline(time.Now().Add(pongWait))
+	})
+	defer c.socket.Close()
+
 	for {
-		var msg *message
+		var msg message
 		//	WebSocketのReadJSONメソッドを利用して、message型をデコードする。
 		if err := c.socket.ReadJSON(&msg); err == nil {
 			msg.When = time.Now()
@@ -30,20 +46,37 @@ func (c *client) read() {
 			if avatarURL, ok := c.userData["avatar_url"]; ok {
 				msg.AvatarURL = avatarURL.(string)
 			}
-			c.room.forward <- msg
+			c.room.forward <- &msg
 		} else {
-			break
+			return
 		}
 	}
-	c.socket.Close()
 }
 
 func (c *client) write() {
-	for msg := range c.send {
-		//	WebSocketのWriteJSONメソッドを利用して、エンコードを行う。
-		if err := c.socket.WriteJSON(msg); err != nil {
-			break
+	ticker := time.NewTicker(pingPeriod)
+	defer func() {
+		ticker.Stop()
+		_ = c.socket.Close()
+	}()
+	for {
+		select {
+		case msg, ok := <-c.send:
+			if err := c.socket.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
+				return
+			}
+			if !ok {
+				_ = c.socket.WriteControl(websocket.CloseMessage, []byte{}, time.Now().Add(writeWait))
+				return
+			}
+			//	WebSocketのWriteJSONメソッドを利用して、エンコードを行う。
+			if err := c.socket.WriteJSON(msg); err != nil {
+				return
+			}
+		case <-ticker.C:
+			if err := c.socket.WriteControl(websocket.PingMessage, nil, time.Now().Add(writeWait)); err != nil {
+				return
+			}
 		}
 	}
-	c.socket.Close()
 }

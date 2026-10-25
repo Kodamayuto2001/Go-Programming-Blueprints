@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"text/template"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/stretchr/gomniauth"
@@ -36,9 +37,7 @@ func (t *templateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		t.templ = template.Must(
 			template.ParseFiles(filepath.Join("templates", t.filename)))
 	})
-	data := map[string]interface{}{
-		"Host": r.Host,
-	}
+	data := map[string]interface{}{}
 	if payload, ok := authPayloadFromRequest(r); ok {
 		data["UserData"] = objx.MustFromBase64(payload)
 	}
@@ -69,13 +68,22 @@ func main() {
 	// FACEBOOK_CLIENT_ID := os.Getenv("FACEBOOK_CLIENT_ID")
 	// FACEBOOK_CLIENT_SECRET := os.Getenv("FACEBOOK_CLIENT_SECRET")
 
-	var addr = flag.String("addr", ":8080", "アプリケーションのアドレス")
+	var addr = flag.String("addr", "127.0.0.1:8080", "アプリケーションのアドレス")
+	var tlsCert = flag.String("tls-cert", "", "HTTPS用の証明書ファイル（本番環境では必須）")
+	var tlsKey = flag.String("tls-key", "", "HTTPS用の秘密鍵ファイル（本番環境では必須）")
 	flag.Parse() //	フラグを解釈します
+	googleRedirectURL := os.Getenv("GOOGLE_REDIRECT_URL")
+	if googleRedirectURL == "" {
+		googleRedirectURL = "http://localhost:8080/auth/callback/google"
+	}
+	if err := validateServerConfig(*addr, *tlsCert, *tlsKey, googleRedirectURL); err != nil {
+		log.Fatal("安全なサーバー設定ではありません：", err)
+	}
 
 	//	Gomniauthのセットアップ
 	gomniauth.SetSecurityKey(randomString())
 	gomniauth.WithProviders(
-		google.New(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, "http://localhost:8080/auth/callback/google"),
+		google.New(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, googleRedirectURL),
 	)
 
 	r := newRoom()
@@ -113,8 +121,23 @@ func main() {
 
 	//	Webサーバーを起動します
 	log.Println("Webサーバーを開始します。ポート：", *addr)
-	if err := http.ListenAndServe(*addr, nil); err != nil {
-		log.Fatal("ListenAndServe:", err)
+	server := &http.Server{
+		Addr:              *addr,
+		Handler:           nil,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       60 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+	}
+	var serverErr error
+	if *tlsCert != "" {
+		serverErr = server.ListenAndServeTLS(*tlsCert, *tlsKey)
+	} else {
+		serverErr = server.ListenAndServe()
+	}
+	if serverErr != nil {
+		log.Fatal("Webサーバー:", serverErr)
 	}
 }
 
@@ -127,10 +150,23 @@ func avatarFilesHandler(avatarDir string) http.Handler {
 		} else {
 			w.Header().Set("Content-Type", "application/octet-stream")
 		}
-		if strings.HasSuffix(req.URL.Path, "/") || filepath.Base(req.URL.Path) == "." {
+		name := strings.TrimPrefix(req.URL.Path, "/avatars/")
+		if !validAvatarFilename(name) {
 			http.NotFound(w, req)
 			return
 		}
 		avatarFiles.ServeHTTP(w, req)
 	})
+}
+
+func validAvatarFilename(filename string) bool {
+	if filepath.Base(filename) != filename || len(filename) < 32+len("-avatar.png") {
+		return false
+	}
+	userID := filename[:32]
+	if !validAvatarUserID(userID) || !strings.HasPrefix(filename[32:], "-avatar.") {
+		return false
+	}
+	ext := filepath.Ext(filename)
+	return imageFormatForExtension(filename) != "" && filename == userID+"-avatar"+strings.ToLower(ext)
 }

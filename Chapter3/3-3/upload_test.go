@@ -142,6 +142,13 @@ func TestUploaderHandlerStoresUploadInAvatarDirectory(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
 	}
+	avatarDirInfo, err := os.Stat(avatarDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := avatarDirInfo.Mode().Perm(); got != 0700 {
+		t.Fatalf("avatar directory permissions = %04o, want 0700", got)
+	}
 
 	entries, err := ioutil.ReadDir(avatarDir)
 	if err != nil {
@@ -258,6 +265,9 @@ func TestAvatarFilesHandlerDoesNotListDirectoryAndSetsSafeHeaders(t *testing.T) 
 	if err := ioutil.WriteFile(filepath.Join(tempRoot, testAvatarUserID+"-avatar.png"), validPNG(t), 0600); err != nil {
 		t.Fatal(err)
 	}
+	if err := ioutil.WriteFile(filepath.Join(tempRoot, "legacy.txt"), []byte("unexpected public file"), 0600); err != nil {
+		t.Fatal(err)
+	}
 
 	handler := avatarFilesHandler(tempRoot)
 	listing := httptest.NewRecorder()
@@ -276,5 +286,11 @@ func TestAvatarFilesHandlerDoesNotListDirectoryAndSetsSafeHeaders(t *testing.T) 
 	}
 	if got := imageResponse.Header().Get("Content-Type"); !strings.HasPrefix(got, "image/png") {
 		t.Fatalf("Content-Type = %q, want image/png", got)
+	}
+
+	legacyResponse := httptest.NewRecorder()
+	handler.ServeHTTP(legacyResponse, httptest.NewRequest(http.MethodGet, "/avatars/legacy.txt", nil))
+	if legacyResponse.Code != http.StatusNotFound {
+		t.Fatalf("unexpected public file status = %d, want %d", legacyResponse.Code, http.StatusNotFound)
 	}
 }
