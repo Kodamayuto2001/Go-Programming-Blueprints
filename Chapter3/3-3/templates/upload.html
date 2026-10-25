@@ -9,7 +9,6 @@
                 <h1>画像のアップロード</h1>
             </div>
             <form role="form" action="/uploader" enctype="multipart/form-data" method="post">
-                <input type="hidden" name="userid" value="{{.UserData.userid}}" />
                 <div class="form-group">
                     <label for="message">ファイルを選択</label>
                     <input type="file" name="avatarFile" />

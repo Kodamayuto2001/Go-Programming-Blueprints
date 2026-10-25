@@ -2,11 +2,14 @@ package main
 
 import (
 	"crypto/md5"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/base64"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/stretchr/gomniauth"
 	"github.com/stretchr/objx"
@@ -19,74 +22,120 @@ type ChatUser interface {
 	AvatarURL() string
 }
 
-//	型の埋め込み(type embedding)
-//	gomniauth/common.User型
-//	chatUserは自動的にGomniauthのUserインターフェースを実装
-//	AvatarURLはGomniauthのUserインターフェースでもAvatarURLメソッドが定義されている
+// 型の埋め込み(type embedding)
+// gomniauth/common.User型
+// chatUserは自動的にGomniauthのUserインターフェースを実装
+// AvatarURLはGomniauthのUserインターフェースでもAvatarURLメソッドが定義されている
 type chatUser struct {
 	gomniauthcommon.User
 	uniqueID string
+}
+
+const oauthStateCookieName = "oauth_state"
+const oauthStateMaxAge = 5 * time.Minute
+
+func newOAuthState() (string, error) {
+	state := make([]byte, 32)
+	if _, err := rand.Read(state); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(state), nil
+}
+
+func oauthCallbackStateMatches(req *http.Request) bool {
+	cookie, err := req.Cookie(oauthStateCookieName)
+	if err != nil || len(cookie.Value) < 40 {
+		return false
+	}
+	state, err := gomniauth.StateFromParam(req.URL.Query().Get("state"))
+	if err != nil {
+		return false
+	}
+	csrf := state.Get("csrf").Str()
+	return len(csrf) == len(cookie.Value) && subtle.ConstantTimeCompare([]byte(csrf), []byte(cookie.Value)) == 1
+}
+
+func clearOAuthStateCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     oauthStateCookieName,
+		Value:    "",
+		Path:     "/auth/callback/google",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	})
 }
 
 func (u chatUser) UniqueID() string {
 	return u.uniqueID
 }
 
-type authHandler struct {
-	next http.Handler
-}
-
-func (h *authHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	//	cookieが空の場合もある
-	if cookie, err := r.Cookie("auth"); err == http.ErrNoCookie || cookie.Value == "" {
-		//	未認証
-		w.Header().Set("Location", "/login")
-		w.WriteHeader(http.StatusTemporaryRedirect)
-	} else if err != nil {
-		//	何らかの別のエラーが発生
-		panic(err.Error())
-	} else {
-		//	成功。ラップされたハンドラを呼び出します
-		h.next.ServeHTTP(w, r)
-	}
-}
-
-func MustAuth(handler http.Handler) http.Handler {
-	return &authHandler{next: handler}
-}
-
-//	loginHandlerはサードパーティーへのログインの処理を受け持ちます。
-//	パスの形式： /auth/{action}/{provider}
+// loginHandlerはサードパーティーへのログインの処理を受け持ちます。
+// パスの形式： /auth/{action}/{provider}
 func loginHandler(w http.ResponseWriter, r *http.Request) {
-	segs := strings.Split(r.URL.Path, "/")
-	action := segs[2]
-	provider := segs[3]
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	segs := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(segs) != 3 || segs[0] != "auth" {
+		http.NotFound(w, r)
+		return
+	}
+	action := segs[1]
+	providerName := segs[2]
+	provider, err := gomniauth.Provider(providerName)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
 	switch action {
 	case "login":
-		provider, err := gomniauth.Provider(provider)
+		csrfState, err := newOAuthState()
 		if err != nil {
-			log.Fatalln("認証プロバイダーの取得に失敗しました：", provider, "-", err)
+			http.Error(w, "authentication could not be started", http.StatusInternalServerError)
+			return
 		}
-		loginUrl, err := provider.GetBeginAuthURL(nil, nil)
+		loginURL, err := provider.GetBeginAuthURL(gomniauth.NewState("csrf", csrfState), nil)
 		if err != nil {
-			log.Fatalln("GetBeginAuthURLの呼び出し中にエラーが発生しました：", provider, "-", err)
+			http.Error(w, "authentication could not be started", http.StatusInternalServerError)
+			return
 		}
-		w.Header().Set("Location", loginUrl)
-		w.WriteHeader(http.StatusTemporaryRedirect)
+		http.SetCookie(w, &http.Cookie{
+			Name:     oauthStateCookieName,
+			Value:    csrfState,
+			Path:     "/auth/callback/" + providerName,
+			MaxAge:   int(oauthStateMaxAge.Seconds()),
+			HttpOnly: true,
+			Secure:   true,
+			SameSite: http.SameSiteLaxMode,
+		})
+		http.Redirect(w, r, loginURL, http.StatusTemporaryRedirect)
 	case "callback":
-		provider, err := gomniauth.Provider(provider)
-		if err != nil {
-			log.Fatalln("認証プロバイダーの取得に失敗しました。", provider, "-", err)
+		if !oauthCallbackStateMatches(r) {
+			clearOAuthStateCookie(w)
+			http.Error(w, "invalid authentication state", http.StatusBadRequest)
+			return
 		}
+		clearOAuthStateCookie(w)
 
-		creds, err := provider.CompleteAuth(objx.MustFromURLQuery(r.URL.RawQuery))
+		query, err := objx.FromURLQuery(r.URL.RawQuery)
 		if err != nil {
-			log.Fatalln("認証を完了できませんでした", provider, "-", err)
+			http.Error(w, "invalid authentication response", http.StatusBadRequest)
+			return
+		}
+		creds, err := provider.CompleteAuth(query)
+		if err != nil {
+			http.Error(w, "authentication could not be completed", http.StatusBadGateway)
+			return
 		}
 
 		user, err := provider.GetUser(creds)
 		if err != nil {
-			log.Fatalln("ユーザーの取得に失敗しました", provider, "-", err)
+			http.Error(w, "user information could not be loaded", http.StatusBadGateway)
+			return
 		}
 
 		// m := md5.New()
@@ -99,7 +148,8 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		chatUser.uniqueID = fmt.Sprintf("%x", m.Sum(nil))
 		avatarURL, err := avatars.GetAvatarURL(chatUser)
 		if err != nil {
-			log.Fatalln("GetAvatarURLに失敗しました", "-", err)
+			http.Error(w, "avatar information could not be loaded", http.StatusBadGateway)
+			return
 		}
 		//	データを保存します
 		// authCookieValue := objx.New(map[string]interface{}{
@@ -109,21 +159,25 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		// 	"email":      user.Email(),
 		// }).MustBase64()
 
-		authCookieValue := objx.New(map[string]interface{}{
+		authCookiePayload := objx.New(map[string]interface{}{
 			"userid":     chatUser.uniqueID,
 			"name":       user.Name(),
 			"avatar_url": avatarURL,
 		}).MustBase64()
+		authCookieValue := signAuthCookie(authCookiePayload, authCookieSigningKey, time.Now())
 
 		http.SetCookie(w, &http.Cookie{
-			Name:  "auth",
-			Value: authCookieValue,
-			Path:  "/",
+			Name:     "auth",
+			Value:    authCookieValue,
+			Path:     "/",
+			MaxAge:   int(authCookieMaxAge.Seconds()),
+			HttpOnly: true,
+			Secure:   true,
+			SameSite: http.SameSiteLaxMode,
 		})
 		w.Header()["Location"] = []string{"/chat"}
 		w.WriteHeader(http.StatusTemporaryRedirect)
 	default:
-		w.WriteHeader(http.StatusNotFound)
-		fmt.Fprintf(w, "アクション%sには非対応です", action)
+		http.NotFound(w, r)
 	}
 }

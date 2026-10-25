@@ -4,6 +4,7 @@ import (
 	"3-3/trace"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/objx"
@@ -18,20 +19,24 @@ type room struct {
 	leave chan *client
 	//	clientsには在籍しているすべてのクライアントが保持されます。
 	clients map[*client]bool
+	// connections bounds WebSocket resource use after the HTTP server hands off
+	// the connection to the upgraded handler.
+	connections chan struct{}
 	//	tracerはチャットルーム上で行われた操作のログを受け取ります。
 	tracer trace.Tracer
 	//	avatarはアバターの情報を取得します。
 	avatar Avatar
 }
 
-//	newRoomはすぐに利用できるチャットルームを生成して返します。
+// newRoomはすぐに利用できるチャットルームを生成して返します。
 func newRoom() *room {
 	return &room{
-		forward: make(chan *message),
-		join:    make(chan *client),
-		leave:   make(chan *client),
-		clients: make(map[*client]bool),
-		tracer:  trace.Off(),
+		forward:     make(chan *message),
+		join:        make(chan *client),
+		leave:       make(chan *client),
+		clients:     make(map[*client]bool),
+		connections: make(chan struct{}, maxRoomConnections),
+		tracer:      trace.Off(),
 		// avatar:  avatar,
 	}
 }
@@ -44,10 +49,7 @@ func (r *room) run() {
 			r.clients[client] = true
 			r.tracer.Trace("新しいクライアントが参加しました")
 		case client := <-r.leave:
-			//	退室
-			delete(r.clients, client)
-			close(client.send)
-			r.tracer.Trace("クライアントが退室しました")
+			r.removeClient(client)
 		case msg := <-r.forward:
 			r.tracer.Trace("メッセージを受信しました：", msg.Message)
 			//	すべてのクライアントにメッセージを転送
@@ -58,8 +60,7 @@ func (r *room) run() {
 					r.tracer.Trace(" -- クライアントに送信されました")
 				default:
 					//	送信に失敗
-					delete(r.clients, client)
-					close(client.send)
+					r.removeClient(client)
 					r.tracer.Trace(" -- 送信に失敗しました。クライアントをクリーンアップします")
 				}
 			}
@@ -67,9 +68,19 @@ func (r *room) run() {
 	}
 }
 
+func (r *room) removeClient(client *client) {
+	if _, ok := r.clients[client]; !ok {
+		return
+	}
+	delete(r.clients, client)
+	close(client.send)
+	r.tracer.Trace("クライアントが退室しました")
+}
+
 const (
-	socketBufferSize  = 1024
-	messageBufferSize = 256
+	socketBufferSize   = 1024
+	messageBufferSize  = 256
+	maxRoomConnections = 128
 )
 
 var upgrader = &websocket.Upgrader{
@@ -78,21 +89,32 @@ var upgrader = &websocket.Upgrader{
 }
 
 func (r *room) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	socket, err := upgrader.Upgrade(w, req, nil)
-	if err != nil {
-		log.Fatal("ServeHTTP:", err)
+	payload, ok := authPayloadFromRequest(req)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	authCookie, err := req.Cookie("auth")
+	select {
+	case r.connections <- struct{}{}:
+		defer func() { <-r.connections }()
+	default:
+		http.Error(w, "room capacity reached", http.StatusServiceUnavailable)
+		return
+	}
+	socket, err := upgrader.Upgrade(w, req, nil)
 	if err != nil {
-		log.Fatal("クッキーの取得に失敗しました：", err)
+		log.Printf("WebSocket upgrade failed: %v", err)
+		return
+	}
+	if err := socket.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
+		_ = socket.Close()
 		return
 	}
 	client := &client{
 		socket:   socket,
 		send:     make(chan *message, messageBufferSize),
 		room:     r,
-		userData: objx.MustFromBase64(authCookie.Value),
+		userData: objx.MustFromBase64(payload),
 	}
 	r.join <- client
 	defer func() { r.leave <- client }()
